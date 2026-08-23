@@ -65,7 +65,7 @@ export async function GET(request: NextRequest) {
       }
     }
 
-    return corsResponse({ powerZones, hrZones }, origin, 200, 86400); // Cache 24h
+    return corsResponse({ powerZones, hrZones }, origin);
   } catch (error) {
     return corsResponse({ error: String(error) }, origin, 500);
   }
