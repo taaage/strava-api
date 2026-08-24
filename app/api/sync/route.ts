@@ -1,7 +1,7 @@
 import { STRAVA_API_BASE } from "@/app/config/constants";
-import { writeCache } from "@/app/services/cache.service";
+import { readCache, writeCache } from "@/app/services/cache.service";
 import { refreshAccessToken } from "@/app/services/strava.service";
-import { options, jsonResponse } from "../helpers";
+import { jsonResponse, options } from "../helpers";
 
 const EFFORT_DURATIONS = [
   { key: "5s", seconds: 5 },
@@ -36,7 +36,7 @@ function computeBestEffort(watts: number[], durationSeconds: number): number {
 
 export const OPTIONS = options;
 
-export async function GET() {
+export async function GET(request: Request) {
   try {
     const token = await refreshAccessToken();
     if (!token) {
@@ -60,18 +60,39 @@ export async function GET() {
     const stats = await statsRes.json();
     await writeCache("stats", stats);
 
-    // 3. Fetch activities (up to 1000)
-    const allActivities = [];
-    for (let page = 1; page <= 10; page++) {
+    // 3. Fetch activities (incremental - merge with existing)
+    const existingActivities: any[] = (await readCache("activities")) || [];
+    const existingIds = new Set(existingActivities.map((a: any) => a.id));
+
+    // Check if full sync requested or just incremental
+    const params = new URL(request.url).searchParams;
+    const fullSync = params.get("full") === "true";
+    const maxPages = fullSync ? 20 : 2;
+
+    const newActivities = [];
+    let done = false;
+    for (let page = 1; page <= maxPages && !done; page++) {
       const res = await fetch(
         `${STRAVA_API_BASE}/athlete/activities?page=${page}&per_page=100`,
         { headers: { Authorization: `Bearer ${token}` } },
       );
       const data = await res.json();
-      if (!Array.isArray(data)) break;
-      allActivities.push(...data);
+      if (!Array.isArray(data) || data.length === 0) break;
+
+      for (const activity of data) {
+        if (!fullSync && existingIds.has(activity.id)) {
+          done = true;
+          break;
+        }
+        if (!existingIds.has(activity.id)) {
+          newActivities.push(activity);
+        }
+      }
+
       if (data.length < 100) break;
     }
+
+    const allActivities = [...newActivities, ...existingActivities];
     await writeCache("activities", allActivities);
 
     // 4. Compute power records from last 20 rides with power
@@ -139,6 +160,7 @@ export async function GET() {
       synced: {
         athlete: athlete.firstname,
         activities: allActivities.length,
+        newActivities: newActivities.length,
         powerRides: ridesWithPower.length,
       },
       timestamp: new Date().toISOString(),
