@@ -1,8 +1,7 @@
-import { NextRequest } from "next/server";
-import { refreshAccessToken } from "@/app/services/strava.service";
 import { STRAVA_API_BASE } from "@/app/config/constants";
 import { writeCache } from "@/app/services/cache.service";
-import { corsResponse, optionsResponse } from "../cors";
+import { refreshAccessToken } from "@/app/services/strava.service";
+import { options, jsonResponse } from "../helpers";
 
 const EFFORT_DURATIONS = [
   { key: "5s", seconds: 5 },
@@ -35,17 +34,13 @@ function computeBestEffort(watts: number[], durationSeconds: number): number {
   return Math.round(maxAvg);
 }
 
-export async function OPTIONS(request: NextRequest) {
-  return optionsResponse(request.headers.get("origin"));
-}
+export const OPTIONS = options;
 
-export async function GET(request: NextRequest) {
-  const origin = request.headers.get("origin");
-
+export async function GET() {
   try {
     const token = await refreshAccessToken();
     if (!token) {
-      return corsResponse({ error: "Failed to get access token" }, origin, 500);
+      return jsonResponse({ error: "Failed to get access token" }, 500);
     }
 
     // 1. Fetch athlete
@@ -56,9 +51,12 @@ export async function GET(request: NextRequest) {
     await writeCache("athlete", athlete);
 
     // 2. Fetch stats
-    const statsRes = await fetch(`${STRAVA_API_BASE}/athletes/${athlete.id}/stats`, {
-      headers: { Authorization: `Bearer ${token}` },
-    });
+    const statsRes = await fetch(
+      `${STRAVA_API_BASE}/athletes/${athlete.id}/stats`,
+      {
+        headers: { Authorization: `Bearer ${token}` },
+      },
+    );
     const stats = await statsRes.json();
     await writeCache("stats", stats);
 
@@ -67,7 +65,7 @@ export async function GET(request: NextRequest) {
     for (let page = 1; page <= 10; page++) {
       const res = await fetch(
         `${STRAVA_API_BASE}/athlete/activities?page=${page}&per_page=100`,
-        { headers: { Authorization: `Bearer ${token}` } }
+        { headers: { Authorization: `Bearer ${token}` } },
       );
       const data = await res.json();
       if (!Array.isArray(data)) break;
@@ -78,9 +76,12 @@ export async function GET(request: NextRequest) {
 
     // 4. Compute power records from last 20 rides with power
     const ridesWithPower = allActivities
-      .filter((a: any) =>
-        (a.type === "Ride" || a.sport_type === "Ride" || a.type === "VirtualRide") &&
-        a.average_watts > 0
+      .filter(
+        (a: any) =>
+          (a.type === "Ride" ||
+            a.sport_type === "Ride" ||
+            a.type === "VirtualRide") &&
+          a.average_watts > 0,
       )
       .slice(0, 20);
 
@@ -90,7 +91,7 @@ export async function GET(request: NextRequest) {
     for (const ride of ridesWithPower) {
       const streamRes = await fetch(
         `${STRAVA_API_BASE}/activities/${ride.id}/streams?keys=watts,time&key_by_type=true`,
-        { headers: { Authorization: `Bearer ${token}` } }
+        { headers: { Authorization: `Bearer ${token}` } },
       );
       if (!streamRes.ok) continue;
       const stream = await streamRes.json();
@@ -110,7 +111,7 @@ export async function GET(request: NextRequest) {
     for (const ride of ridesWithPower) {
       const zonesRes = await fetch(
         `${STRAVA_API_BASE}/activities/${ride.id}/zones`,
-        { headers: { Authorization: `Bearer ${token}` } }
+        { headers: { Authorization: `Bearer ${token}` } },
       );
       if (!zonesRes.ok) continue;
       const zones = await zonesRes.json();
@@ -133,7 +134,7 @@ export async function GET(request: NextRequest) {
     }
     await writeCache("zones", { powerZones, hrZones });
 
-    return corsResponse({
+    return jsonResponse({
       success: true,
       synced: {
         athlete: athlete.firstname,
@@ -141,8 +142,8 @@ export async function GET(request: NextRequest) {
         powerRides: ridesWithPower.length,
       },
       timestamp: new Date().toISOString(),
-    }, origin);
+    });
   } catch (error) {
-    return corsResponse({ error: String(error) }, origin, 500);
+    return jsonResponse({ error: String(error) }, 500);
   }
 }
