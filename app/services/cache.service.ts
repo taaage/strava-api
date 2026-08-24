@@ -7,6 +7,7 @@ export async function writeCache(key: string, data: unknown): Promise<void> {
   await put(`${BLOB_PREFIX}${key}.json`, JSON.stringify(data), {
     access: "public",
     addRandomSuffix: false,
+    allowOverwrite: true,
     token,
   });
 }
