@@ -125,9 +125,26 @@ export async function GET(request: Request) {
     }
     await writeCache("power-records", records);
 
-    // 5. Fetch zones from last 20 rides
-    const powerZones: Record<string, number> = {};
-    const hrZones: Record<string, number> = {};
+    // 5. Fetch zones from last 20 rides and map to configured zones
+    const POWER_ZONES = [
+      { min: 0, max: 179, name: "Z1 Recovery" },
+      { min: 180, max: 235, name: "Z2 Endurance" },
+      { min: 236, max: 309, name: "Z3 Tempo" },
+      { min: 310, max: 344, name: "Z4 Threshold" },
+      { min: 345, max: 399, name: "Z5 VO2max" },
+      { min: 400, max: 446, name: "Z6 Anaerobic" },
+      { min: 447, max: 9999, name: "Z7 Neuromuscular" },
+    ];
+    const HR_ZONES = [
+      { min: 0, max: 134, name: "Z1 Recovery" },
+      { min: 135, max: 154, name: "Z2 Endurance" },
+      { min: 155, max: 169, name: "Z3 Tempo" },
+      { min: 170, max: 184, name: "Z4 Threshold" },
+      { min: 185, max: 9999, name: "Z5 VO2max" },
+    ];
+
+    const rawPowerBuckets: Record<string, number> = {};
+    const rawHrBuckets: Record<string, number> = {};
 
     for (const ride of ridesWithPower) {
       const zonesRes = await fetch(
@@ -142,18 +159,55 @@ export async function GET(request: Request) {
         if (zone.type === "power" && zone.distribution_buckets) {
           for (const bucket of zone.distribution_buckets) {
             const key = `${bucket.min}-${bucket.max}`;
-            powerZones[key] = (powerZones[key] || 0) + (bucket.time || 0);
+            rawPowerBuckets[key] = (rawPowerBuckets[key] || 0) + (bucket.time || 0);
           }
         }
         if (zone.type === "heartrate" && zone.distribution_buckets) {
           for (const bucket of zone.distribution_buckets) {
             const key = `${bucket.min}-${bucket.max}`;
-            hrZones[key] = (hrZones[key] || 0) + (bucket.time || 0);
+            rawHrBuckets[key] = (rawHrBuckets[key] || 0) + (bucket.time || 0);
           }
         }
       }
     }
-    await writeCache("zones", { powerZones, hrZones });
+
+    // Map raw buckets proportionally to configured zones
+    function mapBucketsToZones(buckets: Record<string, number>, zoneConfig: { min: number; max: number; name: string }[]) {
+      const result = zoneConfig.map((z) => ({ name: z.name, seconds: 0 }));
+
+      Object.entries(buckets).forEach(([key, time]) => {
+        const parts = key.split("-");
+        const bucketMin = parseInt(parts[0]);
+        const bucketMax = parts[1] === "-1" ? 9999 : parseInt(parts[1]);
+        const bucketRange = bucketMax - bucketMin;
+
+        if (bucketRange <= 0) {
+          result[0].seconds += time;
+          return;
+        }
+
+        for (let i = 0; i < zoneConfig.length; i++) {
+          const overlapMin = Math.max(bucketMin, zoneConfig[i].min);
+          const overlapMax = Math.min(bucketMax, zoneConfig[i].max);
+          if (overlapMin < overlapMax) {
+            result[i].seconds += time * ((overlapMax - overlapMin) / bucketRange);
+          }
+        }
+      });
+
+      const total = result.reduce((s, z) => s + z.seconds, 0);
+      return result.map((z) => ({
+        name: z.name,
+        seconds: Math.round(z.seconds),
+        hours: Math.round((z.seconds / 3600) * 10) / 10,
+        percentage: total > 0 ? Math.round((z.seconds / total) * 100) : 0,
+      }));
+    }
+
+    await writeCache("zones", {
+      power: mapBucketsToZones(rawPowerBuckets, POWER_ZONES),
+      hr: mapBucketsToZones(rawHrBuckets, HR_ZONES),
+    });
 
     return jsonResponse({
       success: true,
