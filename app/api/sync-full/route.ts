@@ -1,5 +1,5 @@
 import { refreshAccessToken } from "@/app/services/strava.service";
-import { fetchActivitiesIncremental, syncAll } from "@/app/services/sync.service";
+import { fetchActivitiesFull, syncAll } from "@/app/services/sync.service";
 import { options, jsonResponse } from "../helpers";
 
 export const OPTIONS = options;
@@ -9,7 +9,7 @@ export async function GET() {
     const token = await refreshAccessToken();
     if (!token) return jsonResponse({ error: "Failed to get access token" }, 500);
 
-    const activities = await fetchActivitiesIncremental(token);
+    const activities = await fetchActivitiesFull(token);
     const result = await syncAll(activities, token);
 
     return jsonResponse({ success: true, synced: result, timestamp: new Date().toISOString() });
