@@ -19,23 +19,33 @@ const EFFORT_DURATIONS = [
   { key: "60min", seconds: 3600 },
 ];
 
-const POWER_ZONES = [
-  { min: 0, max: 179, name: "Z1 Recovery" },
-  { min: 180, max: 235, name: "Z2 Endurance" },
-  { min: 236, max: 309, name: "Z3 Tempo" },
-  { min: 310, max: 344, name: "Z4 Threshold" },
-  { min: 345, max: 399, name: "Z5 VO2max" },
-  { min: 400, max: 446, name: "Z6 Anaerobic" },
-  { min: 447, max: 9999, name: "Z7 Neuromuscular" },
-];
+const ZONE_NAMES = {
+  power: [
+    "Z1 Recovery",
+    "Z2 Endurance",
+    "Z3 Tempo",
+    "Z4 Threshold",
+    "Z5 VO2max",
+    "Z6 Anaerobic",
+    "Z7 Neuromuscular",
+  ],
+  hr: ["Z1 Recovery", "Z2 Endurance", "Z3 Tempo", "Z4 Threshold", "Z5 VO2max"],
+};
 
-const HR_ZONES = [
-  { min: 0, max: 134, name: "Z1 Recovery" },
-  { min: 135, max: 154, name: "Z2 Endurance" },
-  { min: 155, max: 169, name: "Z3 Tempo" },
-  { min: 170, max: 184, name: "Z4 Threshold" },
-  { min: 185, max: 9999, name: "Z5 VO2max" },
-];
+/**
+ * Converts Strava's zone boundaries from /athlete/zones into our zone config format.
+ * Strava returns: { zones: [{ min: 0, max: 180 }, { min: 180, max: 240 }, ...] }
+ */
+function buildZoneConfig(
+  stravaZones: { min: number; max: number }[],
+  names: string[],
+): { min: number; max: number; name: string }[] {
+  return stravaZones.map((z, i) => ({
+    min: z.min,
+    max: z.max === -1 ? 9999 : z.max,
+    name: names[i] ?? `Z${i + 1}`,
+  }));
+}
 
 function computeBestEffort(watts: number[], durationSeconds: number): number {
   if (watts.length < durationSeconds) return 0;
@@ -51,7 +61,10 @@ function computeBestEffort(watts: number[], durationSeconds: number): number {
   return Math.round(maxAvg);
 }
 
-function mapBucketsToZones(buckets: Record<string, number>, zoneConfig: { min: number; max: number; name: string }[]) {
+function mapBucketsToZones(
+  buckets: Record<string, number>,
+  zoneConfig: { min: number; max: number; name: string }[],
+) {
   const result = zoneConfig.map((z) => ({ name: z.name, seconds: 0 }));
 
   Object.entries(buckets).forEach(([key, time]) => {
@@ -83,7 +96,9 @@ function mapBucketsToZones(buckets: Record<string, number>, zoneConfig: { min: n
   }));
 }
 
-export async function fetchActivitiesIncremental(token: string): Promise<any[]> {
+export async function fetchActivitiesIncremental(
+  token: string,
+): Promise<any[]> {
   const existingActivities: any[] = (await readCache("activities")) || [];
   const existingIds = new Set(existingActivities.map((a: any) => a.id));
   const newActivities: any[] = [];
@@ -134,10 +149,18 @@ export interface RideStream {
   cadence: number[] | null;
 }
 
-export async function fetchAndStoreStreams(activities: any[], token: string, limit = 20) {
+export async function fetchAndStoreStreams(
+  activities: any[],
+  token: string,
+  limit = 20,
+) {
   const ridesWithPower = activities
-    .filter((a: any) =>
-      (a.type === "Ride" || a.sport_type === "Ride" || a.type === "VirtualRide") && a.average_watts > 0
+    .filter(
+      (a: any) =>
+        (a.type === "Ride" ||
+          a.sport_type === "Ride" ||
+          a.type === "VirtualRide") &&
+        a.average_watts > 0,
     )
     .slice(0, limit);
 
@@ -174,10 +197,20 @@ export async function syncAll(activities: any[], token: string) {
   const athlete = await athleteRes.json();
   await writeCache("athlete", athlete);
 
-  // Stats
-  const statsRes = await fetch(`${STRAVA_API_BASE}/athletes/${athlete.id}/stats`, {
+  // Athlete zones (HR + power boundaries from Strava settings)
+  const zonesConfigRes = await fetch(`${STRAVA_API_BASE}/athlete/zones`, {
     headers: { Authorization: `Bearer ${token}` },
   });
+  const zonesConfig = await zonesConfigRes.json();
+  await writeCache("athlete-zones", zonesConfig);
+
+  // Stats
+  const statsRes = await fetch(
+    `${STRAVA_API_BASE}/athletes/${athlete.id}/stats`,
+    {
+      headers: { Authorization: `Bearer ${token}` },
+    },
+  );
   const stats = await statsRes.json();
   await writeCache("stats", stats);
 
@@ -186,8 +219,12 @@ export async function syncAll(activities: any[], token: string) {
 
   // Power records from last 20 rides
   const ridesWithPower = activities
-    .filter((a: any) =>
-      (a.type === "Ride" || a.sport_type === "Ride" || a.type === "VirtualRide") && a.average_watts > 0
+    .filter(
+      (a: any) =>
+        (a.type === "Ride" ||
+          a.sport_type === "Ride" ||
+          a.type === "VirtualRide") &&
+        a.average_watts > 0,
     )
     .slice(0, 20);
 
@@ -227,7 +264,8 @@ export async function syncAll(activities: any[], token: string) {
       if (zone.type === "power" && zone.distribution_buckets) {
         for (const bucket of zone.distribution_buckets) {
           const key = `${bucket.min}-${bucket.max}`;
-          rawPowerBuckets[key] = (rawPowerBuckets[key] || 0) + (bucket.time || 0);
+          rawPowerBuckets[key] =
+            (rawPowerBuckets[key] || 0) + (bucket.time || 0);
         }
       }
       if (zone.type === "heartrate" && zone.distribution_buckets) {
@@ -240,9 +278,19 @@ export async function syncAll(activities: any[], token: string) {
   }
 
   await writeCache("zones", {
-    power: mapBucketsToZones(rawPowerBuckets, POWER_ZONES),
-    hr: mapBucketsToZones(rawHrBuckets, HR_ZONES),
+    power: mapBucketsToZones(
+      rawPowerBuckets,
+      buildZoneConfig(zonesConfig.power?.zones ?? [], ZONE_NAMES.power),
+    ),
+    hr: mapBucketsToZones(
+      rawHrBuckets,
+      buildZoneConfig(zonesConfig.heart_rate?.zones ?? [], ZONE_NAMES.hr),
+    ),
   });
 
-  return { athlete: athlete.firstname, activities: activities.length, powerRides: ridesWithPower.length };
+  return {
+    athlete: athlete.firstname,
+    activities: activities.length,
+    powerRides: ridesWithPower.length,
+  };
 }
