@@ -60,39 +60,52 @@ export async function GET(request: Request) {
     const stats = await statsRes.json();
     await writeCache("stats", stats);
 
-    // 3. Fetch activities (incremental - merge with existing)
-    const existingActivities: any[] = (await readCache("activities")) || [];
-    const existingIds = new Set(existingActivities.map((a: any) => a.id));
-
-    // Check if full sync requested or just incremental
+    // 3. Fetch activities
     const params = new URL(request.url).searchParams;
     const fullSync = params.get("full") === "true";
-    const maxPages = fullSync ? 20 : 2;
 
-    const newActivities = [];
-    let done = false;
-    for (let page = 1; page <= maxPages && !done; page++) {
-      const res = await fetch(
-        `${STRAVA_API_BASE}/athlete/activities?page=${page}&per_page=100`,
-        { headers: { Authorization: `Bearer ${token}` } },
-      );
-      const data = await res.json();
-      if (!Array.isArray(data) || data.length === 0) break;
+    let allActivities: any[] = [];
 
-      for (const activity of data) {
-        if (!fullSync && existingIds.has(activity.id)) {
-          done = true;
-          break;
-        }
-        if (!existingIds.has(activity.id)) {
+    if (fullSync) {
+      // Full: replace blob with fresh Strava data
+      for (let page = 1; page <= 20; page++) {
+        const res = await fetch(
+          `${STRAVA_API_BASE}/athlete/activities?page=${page}&per_page=100`,
+          { headers: { Authorization: `Bearer ${token}` } },
+        );
+        const data = await res.json();
+        if (!Array.isArray(data) || data.length === 0) break;
+        allActivities.push(...data);
+        if (data.length < 100) break;
+      }
+    } else {
+      // Incremental: only add new activities
+      const existingActivities: any[] = (await readCache("activities")) || [];
+      const existingIds = new Set(existingActivities.map((a: any) => a.id));
+      const newActivities: any[] = [];
+      let done = false;
+
+      for (let page = 1; page <= 2 && !done; page++) {
+        const res = await fetch(
+          `${STRAVA_API_BASE}/athlete/activities?page=${page}&per_page=100`,
+          { headers: { Authorization: `Bearer ${token}` } },
+        );
+        const data = await res.json();
+        if (!Array.isArray(data) || data.length === 0) break;
+
+        for (const activity of data) {
+          if (existingIds.has(activity.id)) {
+            done = true;
+            break;
+          }
           newActivities.push(activity);
         }
+        if (data.length < 100) break;
       }
 
-      if (data.length < 100) break;
+      allActivities = [...newActivities, ...existingActivities];
     }
 
-    const allActivities = [...newActivities, ...existingActivities];
     await writeCache("activities", allActivities);
 
     // 4. Compute power records from last 20 rides with power
@@ -214,7 +227,7 @@ export async function GET(request: Request) {
       synced: {
         athlete: athlete.firstname,
         activities: allActivities.length,
-        newActivities: newActivities.length,
+        fullSync,
         powerRides: ridesWithPower.length,
       },
       timestamp: new Date().toISOString(),
