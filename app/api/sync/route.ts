@@ -1,5 +1,5 @@
 import { refreshAccessToken } from "@/app/services/strava.service";
-import { fetchActivitiesIncremental, syncAll } from "@/app/services/sync.service";
+import { fetchActivitiesIncremental, syncAll } from "@/app/services/sync";
 import { options, jsonResponse } from "../helpers";
 
 export const OPTIONS = options;

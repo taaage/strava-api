@@ -1,5 +1,5 @@
 import { refreshAccessToken } from "@/app/services/strava.service";
-import { fetchActivitiesIncremental, fetchAndStoreStreams } from "@/app/services/sync.service";
+import { fetchActivitiesIncremental, syncStreams } from "@/app/services/sync";
 import { readCache } from "@/app/services/cache.service";
 import { options, jsonResponse } from "../helpers";
 
@@ -16,7 +16,7 @@ export async function GET() {
       activities = await fetchActivitiesIncremental(token);
     }
 
-    const result = await fetchAndStoreStreams(activities, token, 20);
+    const result = await syncStreams(activities, token, 20);
 
     return jsonResponse({
       success: true,
