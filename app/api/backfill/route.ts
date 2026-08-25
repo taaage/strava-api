@@ -60,6 +60,10 @@ export async function GET() {
         `${STRAVA_API_BASE}/activities/${ride.id}/streams?keys=watts,heartrate,cadence&key_by_type=true`,
         { headers: { Authorization: `Bearer ${token}` } },
       );
+      if (res.status === 429) {
+        // Rate limited — stop early and save what we have
+        break;
+      }
       if (!res.ok) continue;
       const stream = await res.json();
       if (!stream.watts?.data) continue;
