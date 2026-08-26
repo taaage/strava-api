@@ -25,9 +25,14 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   try {
     const event = await request.json();
+    console.log("[WEBHOOK] Event received:", JSON.stringify(event));
+
     const token = await refreshAccessToken();
-    if (!token)
+    if (!token) {
+      console.error("[WEBHOOK] Failed to refresh access token");
       return NextResponse.json({ error: "No token" }, { status: 500 });
+    }
+    console.log("[WEBHOOK] Token refreshed successfully");
 
     if (event.object_type === "activity") {
       await handleActivityEvent(event, token);
@@ -38,8 +43,10 @@ export async function POST(request: NextRequest) {
       await syncAthlete(token);
     }
 
+    console.log("[WEBHOOK] Processing complete");
     return NextResponse.json({ success: true });
   } catch (error) {
+    console.error("[WEBHOOK] Error:", error);
     return NextResponse.json({ error: String(error) }, { status: 500 });
   }
 }
@@ -58,16 +65,25 @@ async function handleActivityEvent(event: any, token: string) {
 
 async function handleActivityCreate(activityId: number, token: string) {
   // Fetch full activity
+  console.log("[WEBHOOK] Fetching activity:", activityId);
   const activity = await getActivity(activityId, token);
+  console.log("[WEBHOOK] Activity fetched:", activity.id, activity.name ?? "NO NAME - possible error");
+
+  if (activity.errors || activity.message) {
+    console.error("[WEBHOOK] Strava API error:", JSON.stringify(activity));
+    return;
+  }
 
   // Generate and set AI description
   const description = await generateDescription(activity);
+  console.log("[WEBHOOK] AI description generated");
   await updateActivityDescription(activityId, token, description);
 
   // Append to stored activities
   const activities: any[] = (await readCache("activities")) || [];
   activities.unshift(activity);
   await writeCache("activities", activities);
+  console.log("[WEBHOOK] Activities cache updated, total:", activities.length);
 
   // Fetch and store stream if it's a ride with power
   const isRide =
@@ -101,7 +117,13 @@ async function handleActivityCreate(activityId: number, token: string) {
 }
 
 async function handleActivityUpdate(activityId: number, token: string) {
+  console.log("[WEBHOOK] Updating activity:", activityId);
   const activity = await getActivity(activityId, token);
+
+  if (activity.errors || activity.message) {
+    console.error("[WEBHOOK] Strava API error:", JSON.stringify(activity));
+    return;
+  }
 
   // Update in stored activities
   const activities: any[] = (await readCache("activities")) || [];
@@ -112,6 +134,7 @@ async function handleActivityUpdate(activityId: number, token: string) {
     activities.unshift(activity);
   }
   await writeCache("activities", activities);
+  console.log("[WEBHOOK] Activity updated in cache, index:", index);
 }
 
 async function handleActivityDelete(activityId: number) {
