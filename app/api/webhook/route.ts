@@ -79,9 +79,14 @@ async function handleActivityCreate(activityId: number, token: string) {
   console.log("[WEBHOOK] AI description generated");
   await updateActivityDescription(activityId, token, description);
 
-  // Append to stored activities
+  // Append to stored activities (deduplicate)
   const activities: any[] = (await readCache("activities")) || [];
-  activities.unshift(activity);
+  const existingIndex = activities.findIndex((a: any) => a.id === activityId);
+  if (existingIndex >= 0) {
+    activities[existingIndex] = activity;
+  } else {
+    activities.unshift(activity);
+  }
   await writeCache("activities", activities);
   console.log("[WEBHOOK] Activities cache updated, total:", activities.length);
 
@@ -125,16 +130,12 @@ async function handleActivityUpdate(activityId: number, token: string) {
     return;
   }
 
-  // Update in stored activities
+  // Update in stored activities (remove all duplicates, then insert)
   const activities: any[] = (await readCache("activities")) || [];
-  const index = activities.findIndex((a: any) => a.id === activityId);
-  if (index >= 0) {
-    activities[index] = activity;
-  } else {
-    activities.unshift(activity);
-  }
-  await writeCache("activities", activities);
-  console.log("[WEBHOOK] Activity updated in cache, index:", index);
+  const filtered = activities.filter((a: any) => a.id !== activityId);
+  filtered.unshift(activity);
+  await writeCache("activities", filtered);
+  console.log("[WEBHOOK] Activity updated in cache, total:", filtered.length);
 }
 
 async function handleActivityDelete(activityId: number) {
