@@ -6,8 +6,8 @@ import {
   refreshAccessToken,
   updateActivityDescription,
 } from "@/app/services/strava.service";
-import { syncAthlete } from "@/app/services/sync/athlete.sync";
-import type { RideStream } from "@/app/services/sync/streams.sync";
+import { syncAthlete } from "@/app/services/athlete.sync";
+import type { RideStream } from "@/app/services/types";
 import { NextRequest, NextResponse } from "next/server";
 
 export async function GET(request: NextRequest) {
