@@ -64,15 +64,25 @@ export async function GET() {
         // Rate limited — stop early and save what we have
         break;
       }
-      if (!res.ok) continue;
+      if (!res.ok) {
+        // No stream available — store placeholder so we don't retry
+        newStreams.push({
+          activityId: ride.id,
+          date: ride.start_date_local,
+          name: ride.name,
+          watts: [],
+          heartrate: null,
+          cadence: null,
+        });
+        continue;
+      }
       const stream = await res.json();
-      if (!stream.watts?.data) continue;
 
       newStreams.push({
         activityId: ride.id,
         date: ride.start_date_local,
         name: ride.name,
-        watts: stream.watts.data,
+        watts: stream.watts?.data ?? [],
         heartrate: stream.heartrate?.data ?? null,
         cadence: stream.cadence?.data ?? null,
       });
