@@ -1,4 +1,4 @@
 import { options, cachedRoute } from "../helpers";
 
 export const OPTIONS = options;
-export const GET = () => cachedRoute("athlete-zones");
+export const GET = () => cachedRoute("athlete-zones", 3600);

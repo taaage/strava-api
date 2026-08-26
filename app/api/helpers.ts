@@ -11,7 +11,7 @@ export function options() {
   return new NextResponse(null, { status: 204, headers: CORS_HEADERS });
 }
 
-export async function cachedRoute(key: string) {
+export async function cachedRoute(key: string, maxAge = 300) {
   const data = await readCache(key);
   if (!data) {
     return NextResponse.json(
@@ -19,7 +19,12 @@ export async function cachedRoute(key: string) {
       { status: 404, headers: CORS_HEADERS },
     );
   }
-  return NextResponse.json(data, { headers: CORS_HEADERS });
+  return NextResponse.json(data, {
+    headers: {
+      ...CORS_HEADERS,
+      "Cache-Control": `public, max-age=${maxAge}`,
+    },
+  });
 }
 
 export function jsonResponse(data: unknown, status = 200) {
