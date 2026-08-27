@@ -7,6 +7,8 @@ export async function generateDescription(activity: any): Promise<string> {
   try {
     const model = ai.getGenerativeModel({ model: "gemini-2.5-flash" });
 
+    const linkLine = APP_URL ? `\n\nAdd a empty row at the bottom with a link in the final row: ${APP_URL}` : "";
+
     const prompt = `
       Generate a short, motivational and performance oriented description.
       Use cycling semantics and emojis to make it engaging. 
@@ -17,14 +19,13 @@ export async function generateDescription(activity: any): Promise<string> {
       - Distance: ${(activity.distance / 1000).toFixed(1)} km
       - Duration: ${Math.round(activity.moving_time / 60)} minutes
       - Average speed: ${(activity.average_speed * 3.6).toFixed(1)} km/h
-      - Elevation gain: ${activity.total_elevation_gain} m
-      
-      Add a empty row at the bottom with a link in the final row: ${APP_URL}`;
+      - Elevation gain: ${activity.total_elevation_gain} m${linkLine}`;
 
     const result = await model.generateContent(prompt);
     return result.response.text();
   } catch (error) {
     console.error("[AI ERROR]:", error);
-    return `something went wrong... \n\n${APP_URL}`;
+    const fallbackLink = APP_URL ? `\n\n${APP_URL}` : "";
+    return `something went wrong...${fallbackLink}`;
   }
 }
