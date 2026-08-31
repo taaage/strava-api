@@ -1,7 +1,7 @@
 {
   "crons": [
     {
-      "path": "/api/sync",
+      "path": "/api/sync-athlete",
       "schedule": "0 2 * * *"
     }
   ]
