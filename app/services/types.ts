@@ -46,3 +46,24 @@ export interface RideDetail {
   };
   segmentEfforts: SegmentEffortSummary[];
 }
+
+// A segment the athlete has starred (favorited) on Strava.
+// Links to per-ride efforts via `id` (== SegmentEffortSummary.segmentId).
+export interface StarredSegment {
+  id: number;
+  name: string;
+  activityType: string;
+  distance: number;
+  averageGrade: number;
+  maximumGrade: number;
+  elevationHigh: number;
+  elevationLow: number;
+  climbCategory: number;
+  city: string | null;
+  state: string | null;
+  country: string | null;
+  private: boolean;
+  // The athlete's PR time on this segment, if any (seconds).
+  prTime: number | null;
+  starredAt: string | null;
+}

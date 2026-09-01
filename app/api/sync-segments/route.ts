@@ -1,24 +1,19 @@
 import { refreshAccessToken } from "@/app/services/strava.service";
-import { syncAthlete } from "@/app/services/athlete.sync";
 import { syncStarredSegments } from "@/app/services/segments.sync";
 import { options, jsonResponse } from "../helpers";
 
 export const OPTIONS = options;
 
+// Manual on-demand refresh of starred segments (no need to wait for the cron).
 export async function GET() {
   try {
     const token = await refreshAccessToken();
     if (!token) return jsonResponse({ error: "Failed to get access token" }, 500);
 
-    // Orchestrate independent syncs. Each function owns a single responsibility.
-    const { athlete } = await syncAthlete(token);
     const segments = await syncStarredSegments(token);
 
     return jsonResponse({
       success: true,
-      athlete: athlete.firstname,
-      ftp: athlete.ftp,
-      weight: athlete.weight,
       starredSegments: segments.length,
       timestamp: new Date().toISOString(),
     });
