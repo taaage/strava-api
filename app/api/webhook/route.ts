@@ -7,7 +7,8 @@ import {
   updateActivityDescription,
 } from "@/app/services/strava.service";
 import { syncAthlete } from "@/app/services/athlete.sync";
-import type { RideStream } from "@/app/services/types";
+import { fetchRideDetail } from "@/app/services/ride-detail.service";
+import type { RideDetail, RideStream } from "@/app/services/types";
 import { NextRequest, NextResponse } from "next/server";
 
 export async function GET(request: NextRequest) {
@@ -119,6 +120,23 @@ async function handleActivityCreate(activityId: number, token: string) {
       }
     }
   }
+
+  // Store full ride detail (GPS, geo streams, segments) for maps/analysis
+  if (isRide) {
+    try {
+      const detail = await fetchRideDetail(activityId, token, activity);
+      if (detail) {
+        const details: RideDetail[] = (await readCache("ride-details")) || [];
+        const idx = details.findIndex((d) => d.activityId === activityId);
+        if (idx >= 0) details[idx] = detail;
+        else details.unshift(detail);
+        await writeCache("ride-details", details);
+        console.log("[WEBHOOK] Ride detail stored, total:", details.length);
+      }
+    } catch (err) {
+      console.error("[WEBHOOK] Ride detail capture failed (non-blocking):", err);
+    }
+  }
 }
 
 async function handleActivityUpdate(activityId: number, token: string) {
@@ -148,4 +166,9 @@ async function handleActivityDelete(activityId: number) {
   const streams: RideStream[] = (await readCache("ride-streams")) || [];
   const filteredStreams = streams.filter((s) => s.activityId !== activityId);
   await writeCache("ride-streams", filteredStreams);
+
+  // Remove from stored ride details
+  const details: RideDetail[] = (await readCache("ride-details")) || [];
+  const filteredDetails = details.filter((d) => d.activityId !== activityId);
+  await writeCache("ride-details", filteredDetails);
 }
