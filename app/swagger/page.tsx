@@ -8,8 +8,8 @@ const spec = {
   info: {
     title: "Strava API",
     description:
-      "Personal Strava data API with blob-cached responses and daily sync from Strava.",
-    version: "1.0.0",
+      "Personal Strava data API with blob-cached responses. Webhook-driven activity, stream, and ride-detail capture; daily sync of athlete profile, zones, stats, and starred segments.",
+    version: "1.1.0",
   },
   servers: [
     { url: "https://api.tiggenilsson.se", description: "Production" },
@@ -19,10 +19,21 @@ const spec = {
     "/api/athlete": {
       get: {
         summary: "Get athlete profile",
-        description: "Returns cached athlete profile data.",
+        description: "Returns cached athlete profile (incl. FTP, weight, bikes).",
         tags: ["Data"],
         responses: {
           "200": { description: "Athlete profile" },
+          "404": { description: "No cached data" },
+        },
+      },
+    },
+    "/api/athlete-zones": {
+      get: {
+        summary: "Get athlete zones",
+        description: "Returns cached heart rate and power zone configuration.",
+        tags: ["Data"],
+        responses: {
+          "200": { description: "Zone configuration" },
           "404": { description: "No cached data" },
         },
       },
@@ -41,7 +52,7 @@ const spec = {
     "/api/activities": {
       get: {
         summary: "Get activities",
-        description: "Returns up to 1000 cached activities.",
+        description: "Returns cached activity summaries.",
         tags: ["Data"],
         responses: {
           "200": { description: "List of activities" },
@@ -49,35 +60,47 @@ const spec = {
         },
       },
     },
-    "/api/power-records": {
+    "/api/ride-streams": {
       get: {
-        summary: "Get power records",
+        summary: "Get ride streams",
         description:
-          "Best power efforts across durations (5s to 60min) from last 20 rides.",
+          "Per-ride watts/heartrate/cadence streams used for power records and curves.",
         tags: ["Data"],
         responses: {
-          "200": { description: "Power records by duration" },
+          "200": { description: "List of ride streams" },
           "404": { description: "No cached data" },
         },
       },
     },
-    "/api/zones": {
+    "/api/ride-details": {
       get: {
-        summary: "Get zone distributions",
+        summary: "Get full ride details",
         description:
-          "Aggregated time-in-zone for power and heart rate from last 20 rides.",
+          "Rich per-ride data for maps and analysis: GPS (latlng), altitude, distance, velocity and grade streams, map polylines, and segment efforts. Populate via /api/backfill-rides.",
         tags: ["Data"],
         responses: {
-          "200": { description: "Zone data" },
+          "200": { description: "List of ride details" },
           "404": { description: "No cached data" },
         },
       },
     },
-    "/api/sync": {
+    "/api/starred-segments": {
       get: {
-        summary: "Sync data from Strava",
+        summary: "Get starred segments",
         description:
-          "Fetches all data from Strava API and writes to blob cache. Runs daily via cron at 5am UTC, or trigger manually.",
+          "The athlete's starred (favorite) segments. Link to per-ride efforts via segment id. Refreshed daily and on demand via /api/sync-segments.",
+        tags: ["Data"],
+        responses: {
+          "200": { description: "List of starred segments" },
+          "404": { description: "No cached data" },
+        },
+      },
+    },
+    "/api/sync-athlete": {
+      get: {
+        summary: "Sync athlete + segments from Strava",
+        description:
+          "Fetches athlete profile, zones, stats, and starred segments from Strava and writes them to the blob cache. Runs daily via cron (02:00), or trigger manually.",
         tags: ["Sync"],
         responses: {
           "200": { description: "Sync result" },
@@ -85,17 +108,48 @@ const spec = {
         },
       },
     },
+    "/api/sync-segments": {
+      get: {
+        summary: "Sync starred segments from Strava",
+        description:
+          "On-demand refresh of starred segments only. Useful after re-starring segments without waiting for the daily cron.",
+        tags: ["Sync"],
+        responses: {
+          "200": { description: "Sync result" },
+          "500": { description: "Sync failed" },
+        },
+      },
+    },
+    "/api/backfill-rides": {
+      get: {
+        summary: "Backfill full ride details",
+        description:
+          "Batched (20 rides/call), resumable, idempotent backfill of full ride data (GPS, geo streams, segment efforts) into the ride-details cache. Skips already-processed rides. Call repeatedly until 'remaining' is 0. Stops gracefully on Strava rate limiting (rateLimited: true) — wait ~15 min and call again.",
+        tags: ["Sync"],
+        responses: {
+          "200": {
+            description:
+              "Batch progress: { processed, remaining, total, stored, rateLimited }",
+          },
+          "400": { description: "No activities stored — run initial sync first" },
+          "500": { description: "Backfill failed" },
+        },
+      },
+    },
     "/api/webhook": {
       get: {
         summary: "Webhook verification",
-        description: "Strava webhook subscription verification.",
+        description: "Strava webhook subscription verification handshake.",
         tags: ["Webhook"],
-        responses: { "200": { description: "Challenge response" } },
+        responses: {
+          "200": { description: "Challenge response" },
+          "403": { description: "Invalid verify token" },
+        },
       },
       post: {
         summary: "Webhook event",
         description:
-          "Receives Strava activity events and generates AI descriptions.",
+          "Receives Strava events. On activity create: stores the activity, generates an AI description, captures power streams and full ride details. On activity update/delete: keeps caches in sync. On athlete update: re-syncs athlete data.",
         tags: ["Webhook"],
         responses: { "200": { description: "Event processed" } },
       },
