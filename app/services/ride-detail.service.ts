@@ -2,7 +2,7 @@ import { STRAVA_API_BASE } from "@/app/config/constants";
 import type { RideDetail, SegmentEffortSummary } from "@/app/services/types";
 
 const STREAM_KEYS =
-  "time,latlng,altitude,distance,velocity_smooth,grade_smooth";
+  "time,latlng,altitude,distance,velocity_smooth,grade_smooth,watts,heartrate,cadence";
 
 export const isRide = (a: { type?: string; sport_type?: string }) =>
   a.type === "Ride" || a.sport_type === "Ride" || a.type === "VirtualRide";
@@ -16,9 +16,25 @@ export class RateLimitError extends Error {
 }
 
 /**
- * Fetches full ride data (detail + geo streams + segment efforts) for one
- * activity and maps it to a RideDetail. Returns null if the detail fetch fails
- * (other than rate limiting, which throws RateLimitError).
+ * Raw power/HR/cadence samples fetched alongside geo streams. Kept separate
+ * from RideDetail so the (large, per-second) arrays are never serialized in
+ * the public /api/ride-details response — only their precomputed
+ * RideStreamSummary is served to the dashboard.
+ */
+export interface RideDetailStreams {
+  detail: RideDetail;
+  powerStreams: {
+    watts: number[] | null;
+    heartrate: number[] | null;
+    cadence: number[] | null;
+  };
+}
+
+/**
+ * Fetches full ride data (detail + geo streams + power/HR/cadence streams +
+ * segment efforts) for one activity in a single Strava streams call.
+ * Returns null if the detail fetch fails (other than rate limiting, which
+ * throws RateLimitError).
  *
  * `summary` is the stored activity summary, used as a fallback for core fields.
  */
@@ -33,7 +49,7 @@ export async function fetchRideDetail(
     moving_time?: number;
     total_elevation_gain?: number;
   } = {},
-): Promise<RideDetail | null> {
+): Promise<RideDetailStreams | null> {
   const headers = { Authorization: `Bearer ${token}` };
 
   const detailRes = await fetch(
@@ -68,26 +84,33 @@ export async function fetchRideDetail(
     : [];
 
   return {
-    activityId,
-    date: detail.start_date_local ?? summary.start_date_local ?? "",
-    name: detail.name ?? summary.name ?? "",
-    type: detail.type ?? summary.type ?? "",
-    distance: detail.distance ?? summary.distance ?? 0,
-    movingTime: detail.moving_time ?? summary.moving_time ?? 0,
-    totalElevationGain:
-      detail.total_elevation_gain ?? summary.total_elevation_gain ?? 0,
-    map: {
-      polyline: detail.map?.polyline ?? null,
-      summaryPolyline: detail.map?.summary_polyline ?? null,
+    detail: {
+      activityId,
+      date: detail.start_date_local ?? summary.start_date_local ?? "",
+      name: detail.name ?? summary.name ?? "",
+      type: detail.type ?? summary.type ?? "",
+      distance: detail.distance ?? summary.distance ?? 0,
+      movingTime: detail.moving_time ?? summary.moving_time ?? 0,
+      totalElevationGain:
+        detail.total_elevation_gain ?? summary.total_elevation_gain ?? 0,
+      map: {
+        polyline: detail.map?.polyline ?? null,
+        summaryPolyline: detail.map?.summary_polyline ?? null,
+      },
+      streams: {
+        time: stream.time?.data ?? null,
+        latlng: stream.latlng?.data ?? null,
+        altitude: stream.altitude?.data ?? null,
+        distance: stream.distance?.data ?? null,
+        velocity: stream.velocity_smooth?.data ?? null,
+        grade: stream.grade_smooth?.data ?? null,
+      },
+      segmentEfforts,
     },
-    streams: {
-      time: stream.time?.data ?? null,
-      latlng: stream.latlng?.data ?? null,
-      altitude: stream.altitude?.data ?? null,
-      distance: stream.distance?.data ?? null,
-      velocity: stream.velocity_smooth?.data ?? null,
-      grade: stream.grade_smooth?.data ?? null,
+    powerStreams: {
+      watts: stream.watts?.data ?? null,
+      heartrate: stream.heartrate?.data ?? null,
+      cadence: stream.cadence?.data ?? null,
     },
-    segmentEfforts,
   };
 }

@@ -1,6 +1,13 @@
-import { STRAVA_API_BASE } from "@/app/config/constants";
 import { generateDescription } from "@/app/services/ai.service";
-import { readCache, writeCache } from "@/app/services/cache.service";
+import {
+  upsertActivity,
+  deleteActivity,
+  upsertRideStream,
+  deleteRideStream,
+  upsertRideDetail,
+  deleteRideDetail,
+} from "@/app/services/db.service";
+import { buildStreamSummary } from "@/app/services/stream-summary.service";
 import {
   getActivity,
   refreshAccessToken,
@@ -80,58 +87,38 @@ async function handleActivityCreate(activityId: number, token: string) {
   console.log("[WEBHOOK] AI description generated");
   await updateActivityDescription(activityId, token, description);
 
-  // Append to stored activities (deduplicate)
-  const activities: any[] = (await readCache("activities")) || [];
-  const existingIndex = activities.findIndex((a: any) => a.id === activityId);
-  if (existingIndex >= 0) {
-    activities[existingIndex] = activity;
-  } else {
-    activities.unshift(activity);
-  }
-  await writeCache("activities", activities);
-  console.log("[WEBHOOK] Activities cache updated, total:", activities.length);
+  // Upsert this single activity -- no need to read/write the full history.
+  await upsertActivity(activity);
+  console.log("[WEBHOOK] Activity cached:", activityId);
 
-  // Fetch and store stream if it's a ride with power
+  // Fetch full ride detail (GPS/geo streams, segments) + power/HR/cadence
+  // streams in one Strava call, and store both.
   const isRide =
     activity.type === "Ride" ||
     activity.sport_type === "Ride" ||
     activity.type === "VirtualRide";
-  if (isRide && activity.average_watts > 0) {
-    const streamRes = await fetch(
-      `${STRAVA_API_BASE}/activities/${activityId}/streams?keys=watts,heartrate,cadence&key_by_type=true`,
-      { headers: { Authorization: `Bearer ${token}` } },
-    );
-    if (streamRes.ok) {
-      const stream = await streamRes.json();
-      if (stream.watts?.data) {
-        const rideStream: RideStream = {
-          activityId,
-          date: activity.start_date_local,
-          name: activity.name,
-          watts: stream.watts.data,
-          heartrate: stream.heartrate?.data ?? null,
-          cadence: stream.cadence?.data ?? null,
-        };
-
-        const existingStreams: RideStream[] =
-          (await readCache("ride-streams")) || [];
-        existingStreams.unshift(rideStream);
-        await writeCache("ride-streams", existingStreams);
-      }
-    }
-  }
-
-  // Store full ride detail (GPS, geo streams, segments) for maps/analysis
   if (isRide) {
     try {
-      const detail = await fetchRideDetail(activityId, token, activity);
-      if (detail) {
-        const details: RideDetail[] = (await readCache("ride-details")) || [];
-        const idx = details.findIndex((d) => d.activityId === activityId);
-        if (idx >= 0) details[idx] = detail;
-        else details.unshift(detail);
-        await writeCache("ride-details", details);
-        console.log("[WEBHOOK] Ride detail stored, total:", details.length);
+      const result = await fetchRideDetail(activityId, token, activity);
+      if (result) {
+        await upsertRideDetail(result.detail);
+        console.log("[WEBHOOK] Ride detail stored:", activityId);
+
+        if (activity.average_watts > 0 && result.powerStreams.watts) {
+          const rideStream: RideStream = {
+            activityId,
+            date: activity.start_date_local,
+            name: activity.name,
+            watts: result.powerStreams.watts,
+            heartrate: result.powerStreams.heartrate,
+            cadence: result.powerStreams.cadence,
+          };
+          await upsertRideStream(
+            rideStream,
+            await buildStreamSummary(rideStream),
+          );
+          console.log("[WEBHOOK] Ride stream stored:", activityId);
+        }
       }
     } catch (err) {
       console.error("[WEBHOOK] Ride detail capture failed (non-blocking):", err);
@@ -148,27 +135,12 @@ async function handleActivityUpdate(activityId: number, token: string) {
     return;
   }
 
-  // Update in stored activities (remove all duplicates, then insert)
-  const activities: any[] = (await readCache("activities")) || [];
-  const filtered = activities.filter((a: any) => a.id !== activityId);
-  filtered.unshift(activity);
-  await writeCache("activities", filtered);
-  console.log("[WEBHOOK] Activity updated in cache, total:", filtered.length);
+  await upsertActivity(activity);
+  console.log("[WEBHOOK] Activity updated in cache:", activityId);
 }
 
 async function handleActivityDelete(activityId: number) {
-  // Remove from stored activities
-  const activities: any[] = (await readCache("activities")) || [];
-  const filtered = activities.filter((a: any) => a.id !== activityId);
-  await writeCache("activities", filtered);
-
-  // Remove from stored streams
-  const streams: RideStream[] = (await readCache("ride-streams")) || [];
-  const filteredStreams = streams.filter((s) => s.activityId !== activityId);
-  await writeCache("ride-streams", filteredStreams);
-
-  // Remove from stored ride details
-  const details: RideDetail[] = (await readCache("ride-details")) || [];
-  const filteredDetails = details.filter((d) => d.activityId !== activityId);
-  await writeCache("ride-details", filteredDetails);
+  await deleteActivity(activityId);
+  await deleteRideStream(activityId);
+  await deleteRideDetail(activityId);
 }

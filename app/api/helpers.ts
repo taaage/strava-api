@@ -1,4 +1,4 @@
-import { readCache } from "@/app/services/cache.service";
+import { readCache } from "@/app/services/db.service";
 import { NextResponse } from "next/server";
 
 const CORS_HEADERS = {

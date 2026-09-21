@@ -1,5 +1,5 @@
 import { STRAVA_API_BASE } from "@/app/config/constants";
-import { writeCache } from "@/app/services/cache.service";
+import { writeCache } from "@/app/services/db.service";
 import type { StarredSegment } from "@/app/services/types";
 
 const PER_PAGE = 200;

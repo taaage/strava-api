@@ -1,5 +1,5 @@
 import { STRAVA_API_BASE } from "@/app/config/constants";
-import { writeCache } from "@/app/services/cache.service";
+import { writeCache } from "@/app/services/db.service";
 
 export async function syncAthlete(token: string) {
   const athleteRes = await fetch(`${STRAVA_API_BASE}/athlete`, {
