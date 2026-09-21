@@ -13,6 +13,6 @@ export const OPTIONS = options;
 export async function GET() {
   const summaries = await getRideStreamSummaries();
   return NextResponse.json(summaries, {
-    headers: { ...CORS_HEADERS, "Cache-Control": "public, max-age=1800" },
+    headers: { ...CORS_HEADERS, "Cache-Control": "public, max-age=300" },
   });
 }

@@ -15,6 +15,6 @@ export const OPTIONS = options;
 export async function GET() {
   const rides = await getRideDetailsIndex();
   return NextResponse.json(rides, {
-    headers: { ...CORS_HEADERS, "Cache-Control": "public, max-age=1800" },
+    headers: { ...CORS_HEADERS, "Cache-Control": "public, max-age=300" },
   });
 }
