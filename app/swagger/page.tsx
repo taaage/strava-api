@@ -8,7 +8,7 @@ const spec = {
   info: {
     title: "Strava API",
     description:
-      "Personal Strava data API with blob-cached responses. Webhook-driven activity, stream, and ride-detail capture; daily sync of athlete profile, zones, stats, and starred segments.",
+      "Personal Strava data API with Postgres-cached responses. Webhook-driven activity, stream, and ride-detail capture; daily sync of athlete profile, zones, stats, and starred segments.",
     version: "1.1.0",
   },
   servers: [
@@ -62,25 +62,45 @@ const spec = {
     },
     "/api/ride-streams": {
       get: {
-        summary: "Get ride streams",
+        summary: "Get ride stream summaries",
         description:
-          "Per-ride watts/heartrate/cadence streams used for power records and curves.",
+          "Precomputed per-ride power/HR/cadence summary (best-efforts, avg watts/HR, cadence histogram, zone-seconds) used for power records, curves, and zone charts. Raw per-second arrays are never served.",
         tags: ["Data"],
         responses: {
-          "200": { description: "List of ride streams" },
+          "200": { description: "List of ride stream summaries" },
           "404": { description: "No cached data" },
         },
       },
     },
     "/api/ride-details": {
       get: {
-        summary: "Get full ride details",
+        summary: "Get ride details list (metadata only)",
         description:
-          "Rich per-ride data for maps and analysis: GPS (latlng), altitude, distance, velocity and grade streams, map polylines, and segment efforts. Populate via /api/backfill-rides.",
+          "Lightweight per-ride metadata for list views: name, distance, map polylines, and segment efforts. Excludes GPS/geo streams — fetch those via /api/ride-details/{id}. Populate via /api/backfill-rides.",
         tags: ["Data"],
         responses: {
-          "200": { description: "List of ride details" },
-          "404": { description: "No cached data" },
+          "200": { description: "List of ride details (no streams)" },
+        },
+      },
+    },
+    "/api/ride-details/{id}": {
+      get: {
+        summary: "Get full detail for a single ride",
+        description:
+          "Rich data for one ride: GPS (latlng), altitude, distance, velocity and grade streams, map polylines, and segment efforts.",
+        tags: ["Data"],
+        parameters: [
+          {
+            name: "id",
+            in: "path",
+            required: true,
+            schema: { type: "integer" },
+            description: "Strava activity id",
+          },
+        ],
+        responses: {
+          "200": { description: "Ride detail" },
+          "404": { description: "No cached data for this ride" },
         },
       },
     },
@@ -100,7 +120,7 @@ const spec = {
       get: {
         summary: "Sync athlete + segments from Strava",
         description:
-          "Fetches athlete profile, zones, stats, and starred segments from Strava and writes them to the blob cache. Runs daily via cron (02:00), or trigger manually.",
+          "Fetches athlete profile, zones, stats, and starred segments from Strava and writes them to the database cache. Runs daily via cron (02:00), or trigger manually.",
         tags: ["Sync"],
         responses: {
           "200": { description: "Sync result" },
@@ -122,14 +142,14 @@ const spec = {
     },
     "/api/backfill-rides": {
       get: {
-        summary: "Backfill full ride details",
+        summary: "Backfill full ride details and stream summaries",
         description:
-          "Batched (20 rides/call), resumable, idempotent backfill of full ride data (GPS, geo streams, segment efforts) into the ride-details cache. Skips already-processed rides. Call repeatedly until 'remaining' is 0. Stops gracefully on Strava rate limiting (rateLimited: true) — wait ~15 min and call again.",
+          "Batched (20 rides/call), resumable, idempotent backfill of full ride data (GPS, geo streams, segment efforts) into ride-details, plus watts/HR/cadence stream summaries into ride-streams. Skips already-processed rides. Call repeatedly until 'remaining' is 0. Stops gracefully on Strava rate limiting (rateLimited: true) — wait ~15 min and call again.",
         tags: ["Sync"],
         responses: {
           "200": {
             description:
-              "Batch progress: { processed, remaining, total, stored, rateLimited }",
+              "Batch progress: { processed, streamsStored, remaining, total, stored, rateLimited }",
           },
           "400": { description: "No activities stored — run initial sync first" },
           "500": { description: "Backfill failed" },
