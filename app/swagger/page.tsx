@@ -118,9 +118,9 @@ const spec = {
     },
     "/api/sync-athlete": {
       get: {
-        summary: "Sync athlete + segments from Strava",
+        summary: "Sync athlete, activities + segments from Strava",
         description:
-          "Fetches athlete profile, zones, stats, and starred segments from Strava and writes them to the database cache. Runs daily via cron (02:00), or trigger manually.",
+          "Fetches athlete profile, zones, stats, historical activity list, and starred segments from Strava and writes them to the database cache. Run this before /api/backfill-rides on a fresh database.",
         tags: ["Sync"],
         responses: {
           "200": { description: "Sync result" },

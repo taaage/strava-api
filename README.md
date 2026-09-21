@@ -15,12 +15,13 @@ app/
 │   ├── ride-details/     # GET — ride list metadata; GET [id] — single ride detail + streams
 │   ├── ride-streams/     # GET — precomputed per-ride power/HR/cadence summaries
 │   ├── starred-segments/ # GET — cached starred segments
-│   ├── sync-athlete/     # GET — manual athlete + segments sync
+│   ├── sync-athlete/     # GET — manual athlete, activities + segments sync
 │   ├── sync-segments/    # GET — manual starred segments sync
 │   ├── backfill-rides/   # GET — resumable backfill of ride-details + ride-streams from Strava
 │   └── helpers.ts        # CORS + cached route helper
 ├── services/
 │   ├── athlete.sync.ts         # Fetch athlete profile, zones, stats
+│   ├── activities.sync.ts      # Fetch historical activity list
 │   ├── segments.sync.ts        # Starred segments fetching
 │   ├── ride-detail.service.ts  # Full ride detail + geo/power/HR/cadence stream fetching
 │   ├── stream-summary.service.ts # Precomputes best-efforts, zone-time, cadence histogram per ride
