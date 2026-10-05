@@ -98,7 +98,7 @@ export async function markActivityAsCommute(
       Authorization: `Bearer ${token}`,
       "Content-Type": "application/json",
     },
-    body: JSON.stringify({ name: "Commute", commute: true, gear_id: gearId }),
+    body: JSON.stringify({ commute: true, gear_id: gearId }),
   });
 
   if (!response.ok) {

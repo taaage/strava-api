@@ -90,7 +90,6 @@ async function handleActivityCreate(activityId: number, token: string) {
   if (isCommuteRide) {
     try {
       await markActivityAsCommute(activityId, token, RIDLEY_GEAR_ID);
-      activity.name = "Commute";
       activity.commute = true;
       activity.gear_id = RIDLEY_GEAR_ID;
       console.log("[WEBHOOK] Commute matched and updated:", activityId);
