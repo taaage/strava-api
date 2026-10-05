@@ -1,5 +1,6 @@
 import { generateDescription } from "@/app/services/ai.service";
 import {
+  readCache,
   upsertActivity,
   deleteActivity,
   upsertRideStream,
@@ -10,9 +11,11 @@ import {
 import { buildStreamSummary } from "@/app/services/stream-summary.service";
 import {
   getActivity,
+  markActivityAsCommute,
   refreshAccessToken,
   updateActivityDescription,
 } from "@/app/services/strava.service";
+import { isCommuteActivity } from "@/app/services/commute.service";
 import { syncAthlete } from "@/app/services/athlete.sync";
 import { fetchRideDetail } from "@/app/services/ride-detail.service";
 import type { RideDetail, RideStream } from "@/app/services/types";
@@ -82,6 +85,31 @@ async function handleActivityCreate(activityId: number, token: string) {
     return;
   }
 
+  const isCommuteRide =
+    (activity.type === "Ride" || activity.sport_type === "Ride") &&
+    isCommuteActivity(activity);
+  if (isCommuteRide) {
+    const gearId = await resolveCommuterGearId();
+    if (!gearId) {
+      console.warn(
+        "[WEBHOOK] Commute matched, but no unique commuter bike was found",
+      );
+    } else {
+      try {
+        await markActivityAsCommute(activityId, token, gearId);
+        activity.name = "Commute";
+        activity.commute = true;
+        activity.gear_id = gearId;
+        console.log("[WEBHOOK] Commute matched and updated:", activityId);
+      } catch (error) {
+        console.error(
+          "[WEBHOOK] Commute update failed; continuing activity sync:",
+          error,
+        );
+      }
+    }
+  }
+
   // Generate and set AI description
   const description = await generateDescription(activity);
   console.log("[WEBHOOK] AI description generated");
@@ -124,6 +152,22 @@ async function handleActivityCreate(activityId: number, token: string) {
       console.error("[WEBHOOK] Ride detail capture failed (non-blocking):", err);
     }
   }
+}
+
+async function resolveCommuterGearId(): Promise<string | null> {
+  const configuredGearId = process.env.STRAVA_COMMUTER_GEAR_ID?.trim();
+  if (configuredGearId) return configuredGearId;
+
+  const gearName = process.env.STRAVA_COMMUTER_GEAR_NAME?.trim() || "Ridley";
+  const athlete = await readCache<{
+    bikes?: Array<{ id?: string; name?: string }>;
+  }>("athlete");
+  const matches = athlete?.bikes?.filter(
+    (bike) =>
+      bike.id && bike.name?.toLocaleLowerCase().includes(gearName.toLocaleLowerCase()),
+  );
+
+  return matches?.length === 1 ? matches[0].id! : null;
 }
 
 async function handleActivityUpdate(activityId: number, token: string) {

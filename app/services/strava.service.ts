@@ -40,3 +40,24 @@ export async function updateActivityDescription(
     body: JSON.stringify({ description }),
   });
 }
+
+export async function markActivityAsCommute(
+  activityId: number,
+  token: string,
+  gearId: string,
+): Promise<void> {
+  const response = await fetch(`${STRAVA_API_BASE}/activities/${activityId}`, {
+    method: "PUT",
+    headers: {
+      Authorization: `Bearer ${token}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({ name: "Commute", commute: true, gear_id: gearId }),
+  });
+
+  if (!response.ok) {
+    throw new Error(
+      `Failed to mark Strava activity ${activityId} as commute (${response.status})`,
+    );
+  }
+}
