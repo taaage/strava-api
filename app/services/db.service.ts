@@ -1,4 +1,4 @@
-import { Pool, type QueryResultRow } from "pg";
+import { Pool, type PoolClient, type QueryResultRow } from "pg";
 
 // Reused across warm serverless invocations. Supabase's transaction pooler
 // (port 6543) handles connection multiplexing, so a small local pool is fine
@@ -28,6 +28,32 @@ export function query<T extends QueryResultRow = any>(
   params?: unknown[],
 ) {
   return getPool().query<T>(text, params);
+}
+
+export async function withAdvisoryTransactionLock<T>(
+  lockId: number,
+  operation: (client: PoolClient) => Promise<T>,
+): Promise<T> {
+  const client = await getPool().connect();
+  let transactionStarted = false;
+
+  try {
+    await client.query("BEGIN");
+    transactionStarted = true;
+    await client.query("SELECT pg_advisory_xact_lock($1)", [lockId]);
+
+    const result = await operation(client);
+    await client.query("COMMIT");
+    transactionStarted = false;
+    return result;
+  } catch (error) {
+    if (transactionStarted) {
+      await client.query("ROLLBACK").catch(() => undefined);
+    }
+    throw error;
+  } finally {
+    client.release();
+  }
 }
 
 // --- Generic small-blob key/value cache -----------------------------------
