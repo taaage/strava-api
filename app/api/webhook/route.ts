@@ -10,8 +10,8 @@ import { buildStreamSummary } from "@/app/services/stream-summary.service";
 import {
   getActivity,
   markActivityAsCommute,
-  refreshAccessToken,
 } from "@/app/services/strava.service";
+import { refreshAccessToken } from "@/app/services/strava-auth.service";
 import { isCommuteActivity } from "@/app/services/commute.service";
 import { syncAthlete } from "@/app/services/athlete.sync";
 import { fetchRideDetail } from "@/app/services/ride-detail.service";

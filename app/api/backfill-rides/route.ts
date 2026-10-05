@@ -4,7 +4,7 @@ import {
   upsertRideDetail,
   upsertRideStream,
 } from "@/app/services/db.service";
-import { refreshAccessToken } from "@/app/services/strava.service";
+import { refreshAccessToken } from "@/app/services/strava-auth.service";
 import {
   fetchRideDetail,
   isRide,

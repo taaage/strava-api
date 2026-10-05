@@ -1,4 +1,4 @@
-import { refreshAccessToken } from "@/app/services/strava.service";
+import { refreshAccessToken } from "@/app/services/strava-auth.service";
 import { syncStarredSegments } from "@/app/services/segments.sync";
 import { options, jsonResponse } from "../helpers";
 

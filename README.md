@@ -25,8 +25,9 @@ app/
 │   ├── segments.sync.ts        # Starred segments fetching
 │   ├── ride-detail.service.ts  # Full ride detail + geo/power/HR/cadence stream fetching
 │   ├── stream-summary.service.ts # Precomputes best-efforts, zone-time, cadence histogram per ride
-│   ├── strava.service.ts       # Auth (token refresh) + Strava API helpers
-│   ├── ai.service.ts           # Gemini AI description generation
+│   ├── strava-auth.service.ts  # Refreshes access tokens and persists rotated refresh tokens
+│   ├── strava.service.ts       # Strava activity API helpers
+│   ├── commute.service.ts     # Matches ride start/end points against commute geofences
 │   └── db.service.ts           # Supabase Postgres read/write helpers
 └── config/
     └── constants.ts            # API URLs
@@ -38,7 +39,7 @@ app/
 
 | Event | Action | Strava API calls |
 |-------|--------|-----------------|
-| `activity.create` | Fetch activity + merged geo/power/HR/cadence streams, store, generate AI description | 2 |
+| `activity.create` | Fetch activity; mark matching rides as commutes with the commuter bike; cache activity and ride streams | Varies |
 | `activity.update` | Re-fetch activity, update row | 1 |
 | `activity.delete` | Remove rows | 0 |
 | `athlete.update` | Re-fetch profile, zones, stats | 3 |
@@ -52,6 +53,7 @@ Large per-ride payloads (`ride_details`, `ride_streams`) are stored **one row pe
 | Table / key | Contents |
 |----------|----------|
 | `kv_cache.athlete` | Athlete profile (incl. FTP, weight, bikes) |
+| `kv_cache.strava-refresh-token` | Latest refresh token returned by Strava; initialized from `STRAVA_REFRESH_TOKEN` |
 | `kv_cache.athlete-zones` | Power + HR zone boundaries from Strava settings |
 | `kv_cache.stats` | Ride totals (recent, YTD, all-time) |
 | `kv_cache.starred-segments` | Starred segments |
@@ -76,12 +78,7 @@ Large per-ride payloads (`ride_details`, `ride_streams`) are stored **one row pe
 1. Go to https://supabase.com/dashboard → New Project
 2. Once provisioned, go to **Project Settings → Database → Connection string** and copy the **Transaction pooler** string (port `6543`)
 
-### 3. Get Gemini API Key
-
-1. Go to https://aistudio.google.com/app/apikey
-2. Create API Key
-
-### 4. Environment Variables
+### 3. Environment Variables
 
 ```
 STRAVA_CLIENT_ID=
@@ -89,22 +86,25 @@ STRAVA_CLIENT_SECRET=
 STRAVA_REFRESH_TOKEN=
 STRAVA_VERIFY_TOKEN=
 DATABASE_URL=
-GEMINI_API_KEY=
+STRAVA_COMMUTE_START_GEOFENCE=
+STRAVA_COMMUTE_END_GEOFENCE=
 ```
 
-### 5. Apply the database schema
+The geofence values are GeoJSON FeatureCollections with Polygon geometry. Use `[longitude, latitude]` coordinates. Matching rides get Strava's commute flag and the configured commuter bike. The latest rotated refresh token is saved in Postgres, so `STRAVA_REFRESH_TOKEN` is only needed to bootstrap or replace the authorization.
+
+### 4. Apply the database schema
 
 ```bash
 npm run db:migrate
 ```
 
-### 6. Deploy
+### 5. Deploy
 
 ```bash
 npx vercel --prod
 ```
 
-### 7. Subscribe to Strava Webhooks
+### 6. Subscribe to Strava Webhooks
 
 ```bash
 curl -X POST https://www.strava.com/api/v3/push_subscriptions \
@@ -119,4 +119,3 @@ curl -X POST https://www.strava.com/api/v3/push_subscriptions \
 - Next.js API Routes (Vercel)
 - Supabase Postgres (storage)
 - Strava API (webhook-driven)
-- Google Gemini (AI descriptions)
