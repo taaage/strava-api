@@ -1,7 +1,10 @@
 import { STRAVA_API_BASE, STRAVA_OAUTH_URL } from "../config/constants";
+import { readCache, writeCache } from "./db.service";
 
 export async function refreshAccessToken(): Promise<string | null> {
-  const refreshToken = process.env.STRAVA_REFRESH_TOKEN;
+  const refreshToken =
+    (await readCache<string>("strava-refresh-token")) ??
+    process.env.STRAVA_REFRESH_TOKEN;
   if (!refreshToken) return null;
 
   const response = await fetch(STRAVA_OAUTH_URL, {
@@ -16,6 +19,19 @@ export async function refreshAccessToken(): Promise<string | null> {
   });
 
   const data = await response.json();
+  if (!response.ok) {
+    console.error(
+      `[STRAVA AUTH] Token refresh failed (${response.status}): ${data.message ?? "No error message"}`,
+    );
+    return null;
+  }
+
+  if (!data.access_token || !data.refresh_token) {
+    console.error("[STRAVA AUTH] Token refresh response was missing tokens");
+    return null;
+  }
+
+  await writeCache("strava-refresh-token", data.refresh_token);
   return data.access_token;
 }
 
