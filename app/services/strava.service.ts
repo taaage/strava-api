@@ -87,27 +87,6 @@ export async function getActivity(activityId: number, token: string) {
   return response.json();
 }
 
-export async function updateActivityDescription(
-  activityId: number,
-  token: string,
-  description: string
-): Promise<void> {
-  const response = await fetch(`${STRAVA_API_BASE}/activities/${activityId}`, {
-    method: "PUT",
-    headers: {
-      Authorization: `Bearer ${token}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({ description }),
-  });
-
-  if (!response.ok) {
-    console.error(
-      `[STRAVA] Description update failed for activity ${activityId} (${response.status})`,
-    );
-  }
-}
-
 export async function markActivityAsCommute(
   activityId: number,
   token: string,

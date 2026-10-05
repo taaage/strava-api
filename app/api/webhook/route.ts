@@ -1,6 +1,4 @@
-import { generateDescription } from "@/app/services/ai.service";
 import {
-  readCache,
   upsertActivity,
   deleteActivity,
   upsertRideStream,
@@ -13,13 +11,14 @@ import {
   getActivity,
   markActivityAsCommute,
   refreshAccessToken,
-  updateActivityDescription,
 } from "@/app/services/strava.service";
 import { isCommuteActivity } from "@/app/services/commute.service";
 import { syncAthlete } from "@/app/services/athlete.sync";
 import { fetchRideDetail } from "@/app/services/ride-detail.service";
 import type { RideDetail, RideStream } from "@/app/services/types";
 import { NextRequest, NextResponse } from "next/server";
+
+const RIDLEY_GEAR_ID = "b17548680";
 
 export async function GET(request: NextRequest) {
   const params = request.nextUrl.searchParams;
@@ -89,31 +88,19 @@ async function handleActivityCreate(activityId: number, token: string) {
     (activity.type === "Ride" || activity.sport_type === "Ride") &&
     isCommuteActivity(activity);
   if (isCommuteRide) {
-    const gearId = await resolveCommuterGearId();
-    if (!gearId) {
-      console.warn(
-        "[WEBHOOK] Commute matched, but no unique commuter bike was found",
+    try {
+      await markActivityAsCommute(activityId, token, RIDLEY_GEAR_ID);
+      activity.name = "Commute";
+      activity.commute = true;
+      activity.gear_id = RIDLEY_GEAR_ID;
+      console.log("[WEBHOOK] Commute matched and updated:", activityId);
+    } catch (error) {
+      console.error(
+        "[WEBHOOK] Commute update failed; continuing activity sync:",
+        error,
       );
-    } else {
-      try {
-        await markActivityAsCommute(activityId, token, gearId);
-        activity.name = "Commute";
-        activity.commute = true;
-        activity.gear_id = gearId;
-        console.log("[WEBHOOK] Commute matched and updated:", activityId);
-      } catch (error) {
-        console.error(
-          "[WEBHOOK] Commute update failed; continuing activity sync:",
-          error,
-        );
-      }
     }
   }
-
-  // Generate and set AI description
-  const description = await generateDescription(activity);
-  console.log("[WEBHOOK] AI description generated");
-  await updateActivityDescription(activityId, token, description);
 
   // Upsert this single activity -- no need to read/write the full history.
   await upsertActivity(activity);
@@ -152,22 +139,6 @@ async function handleActivityCreate(activityId: number, token: string) {
       console.error("[WEBHOOK] Ride detail capture failed (non-blocking):", err);
     }
   }
-}
-
-async function resolveCommuterGearId(): Promise<string | null> {
-  const configuredGearId = process.env.STRAVA_COMMUTER_GEAR_ID?.trim();
-  if (configuredGearId) return configuredGearId;
-
-  const gearName = process.env.STRAVA_COMMUTER_GEAR_NAME?.trim() || "Ridley";
-  const athlete = await readCache<{
-    bikes?: Array<{ id?: string; name?: string }>;
-  }>("athlete");
-  const matches = athlete?.bikes?.filter(
-    (bike) =>
-      bike.id && bike.name?.toLocaleLowerCase().includes(gearName.toLocaleLowerCase()),
-  );
-
-  return matches?.length === 1 ? matches[0].id! : null;
 }
 
 async function handleActivityUpdate(activityId: number, token: string) {
