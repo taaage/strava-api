@@ -31,7 +31,7 @@ export async function updateActivityDescription(
   token: string,
   description: string
 ): Promise<void> {
-  await fetch(`${STRAVA_API_BASE}/activities/${activityId}`, {
+  const response = await fetch(`${STRAVA_API_BASE}/activities/${activityId}`, {
     method: "PUT",
     headers: {
       Authorization: `Bearer ${token}`,
@@ -39,6 +39,12 @@ export async function updateActivityDescription(
     },
     body: JSON.stringify({ description }),
   });
+
+  if (!response.ok) {
+    console.error(
+      `[STRAVA] Description update failed for activity ${activityId} (${response.status})`,
+    );
+  }
 }
 
 export async function markActivityAsCommute(
