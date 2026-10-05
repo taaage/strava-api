@@ -39,7 +39,7 @@ app/
 
 | Event | Action | Strava API calls |
 |-------|--------|-----------------|
-| `activity.create` | Fetch activity; mark matching rides as commutes with the commuter bike; cache activity and ride streams | Varies |
+| `activity.create` | Fetch activity; mark matching rides as commutes with the commuter bike; cache the activity and ride streams | Varies |
 | `activity.update` | Re-fetch activity, update row | 1 |
 | `activity.delete` | Remove rows | 0 |
 | `athlete.update` | Re-fetch profile, zones, stats | 3 |
